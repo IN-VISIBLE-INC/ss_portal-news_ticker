@@ -1,0 +1,42 @@
+{
+  "manifestVersion": "1.0",
+  "id": "news_ticker",
+  "name": "ニュースティッカー",
+  "description": "RSSフィードからニュースを表示（カルーセル/マーキー対応）",
+  "version": "2.0.0",
+  "author": {
+    "name": "SSPortal Team"
+  },
+  "category": "news",
+  "defaultSize": {
+    "width": 12,
+    "height": 1
+  },
+  "availableSizes": [
+    { "width": 12, "height": 1 }
+  ],
+  "defaultConfig": {
+    "feeds": [
+      {
+        "id": "default-yahoo",
+        "label": "Yahoo!ニュース",
+        "url": "https://news.yahoo.co.jp/rss/topics/top-picks.xml",
+        "enabled": true
+      }
+    ],
+    "tickerType": "marquee",
+    "displayOrder": "chronological",
+    "displayContent": "title",
+    "carouselInterval": 5,
+    "marqueeSpeed": "normal",
+    "textFont": "gothic-light",
+    "textScale": 1,
+    "textTranslateX": 0,
+    "textTranslateY": 0,
+    "textColor": null,
+    "bgColor": "transparent",
+    "bgOpacity": 100,
+    "borderColor": "transparent",
+    "borderSize": 0
+  }
+}
