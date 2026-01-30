@@ -12,7 +12,7 @@ export type CarouselDirection = 'up' | 'down' | 'left' | 'right';
 export type DisplayOrder = 'chronological' | 'random';
 
 /** 表示内容 */
-export type DisplayContent = 'title' | 'description';
+export type DisplayContent = 'title' | 'body';
 
 
 /** テキストフォント */
