@@ -14,9 +14,9 @@ import type {
   NewsItem,
   RssFeed,
   TextFont,
-  MarqueeSpeed,
+  CarouselDirection,
 } from './types';
-import { TEXT_FONTS, MARQUEE_SPEEDS, DEFAULT_FEEDS } from './types';
+import { TEXT_FONTS, DEFAULT_FEEDS } from './types';
 
 // =============================================================================
 // RSS パース
@@ -152,13 +152,26 @@ function useRssFeeds(feeds: RssFeed[]): { items: NewsItem[]; loading: boolean; e
 }
 
 // =============================================================================
+// 日時フォーマット
+// =============================================================================
+
+function formatDateTime(date: Date): string {
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${month}/${day} ${hours}:${minutes}`;
+}
+
+// =============================================================================
 // マーキー表示
 // =============================================================================
 
 interface MarqueeDisplayProps {
   items: NewsItem[];
-  displayContent: 'title' | 'description';
-  speed: MarqueeSpeed;
+  displayContent: 'title' | 'body';
+  showDateTime: boolean;
+  speed: number;
   textColor: string;
   fontClass: string;
   fontSize: number;
@@ -169,6 +182,7 @@ interface MarqueeDisplayProps {
 function MarqueeDisplay({
   items,
   displayContent,
+  showDateTime,
   speed,
   textColor,
   fontClass,
@@ -176,14 +190,9 @@ function MarqueeDisplay({
   translateX,
   translateY,
 }: MarqueeDisplayProps) {
-  const tickerText = items
-    .map((item) => (displayContent === 'title' ? item.title : item.description))
-    .filter(Boolean)
-    .join('　　　　');
+  const duration = speed;
 
-  const duration = MARQUEE_SPEEDS[speed].duration;
-
-  if (!tickerText) {
+  if (items.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center">
         <span style={{ color: textColor }} className={`${fontClass} opacity-50`}>
@@ -192,6 +201,27 @@ function MarqueeDisplay({
       </div>
     );
   }
+
+  // 各アイテムをレンダリング
+  const renderItems = () =>
+    items.map((item, idx) => {
+      const content = displayContent === 'title' ? item.title : item.description;
+      return (
+        <span key={idx} className="inline-flex items-baseline" style={{ marginRight: '3em' }}>
+          {showDateTime && (
+            <span
+              style={{
+                fontSize: `${fontSize * 0.75}cqmin`,
+                marginRight: '1em',
+              }}
+            >
+              {formatDateTime(item.pubDate)}
+            </span>
+          )}
+          <span>{content}</span>
+        </span>
+      );
+    });
 
   return (
     <div
@@ -213,7 +243,7 @@ function MarqueeDisplay({
             fontSize: `${fontSize}cqmin`,
           }}
         >
-          {tickerText}
+          {renderItems()}
         </span>
         <span
           className={`${fontClass} px-4`}
@@ -222,7 +252,7 @@ function MarqueeDisplay({
             fontSize: `${fontSize}cqmin`,
           }}
         >
-          {tickerText}
+          {renderItems()}
         </span>
       </div>
       <style jsx>{`
@@ -248,8 +278,10 @@ function MarqueeDisplay({
 
 interface CarouselDisplayProps {
   items: NewsItem[];
-  displayContent: 'title' | 'description';
+  displayContent: 'title' | 'body';
+  showDateTime: boolean;
   interval: number;
+  direction: CarouselDirection;
   textColor: string;
   fontClass: string;
   fontSize: number;
@@ -257,32 +289,67 @@ interface CarouselDisplayProps {
   translateY: number;
 }
 
+// 方向に応じたトランスフォーム設定（コンテナ高さ/幅基準）
+const getExitTransform = (direction: CarouselDirection) => {
+  switch (direction) {
+    case 'up': return 'translateY(-100cqh)';
+    case 'down': return 'translateY(100cqh)';
+    case 'left': return 'translateX(-100cqw)';
+    case 'right': return 'translateX(100cqw)';
+  }
+};
+
+const getEnterStartTransform = (direction: CarouselDirection) => {
+  // 反対方向から入ってくる
+  switch (direction) {
+    case 'up': return 'translateY(100cqh)';
+    case 'down': return 'translateY(-100cqh)';
+    case 'left': return 'translateX(100cqw)';
+    case 'right': return 'translateX(-100cqw)';
+  }
+};
+
 function CarouselDisplay({
   items,
   displayContent,
+  showDateTime,
   interval,
+  direction,
   textColor,
   fontClass,
   fontSize,
   translateX,
   translateY,
 }: CarouselDisplayProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isTransitioning, setIsTransitioning] = useState(false);
+  // スロットA/Bを交互に使用
+  const [slotAIndex, setSlotAIndex] = useState(0);
+  const [slotBIndex, setSlotBIndex] = useState(1);
+  const [activeSlot, setActiveSlot] = useState<'A' | 'B'>('A');
+  const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
     if (items.length <= 1) return;
 
     const timer = setInterval(() => {
-      setIsTransitioning(true);
+      setIsAnimating(true);
+
       setTimeout(() => {
-        setCurrentIndex((prev) => (prev + 1) % items.length);
-        setIsTransitioning(false);
-      }, 300);
+        // アニメーション完了後
+        if (activeSlot === 'A') {
+          // Bがアクティブになる。Aは次の次のアイテムを準備
+          setSlotAIndex((slotBIndex + 1) % items.length);
+          setActiveSlot('B');
+        } else {
+          // Aがアクティブになる。Bは次の次のアイテムを準備
+          setSlotBIndex((slotAIndex + 1) % items.length);
+          setActiveSlot('A');
+        }
+        setIsAnimating(false);
+      }, 400);
     }, interval * 1000);
 
     return () => clearInterval(timer);
-  }, [items.length, interval]);
+  }, [items.length, interval, activeSlot, slotAIndex, slotBIndex]);
 
   if (items.length === 0) {
     return (
@@ -294,26 +361,71 @@ function CarouselDisplay({
     );
   }
 
-  const currentItem = items[currentIndex];
-  const text = displayContent === 'title' ? currentItem.title : currentItem.description;
+  const renderItem = (idx: number) => {
+    const item = items[idx % items.length];
+    const content = displayContent === 'title' ? item.title : item.description;
+    if (showDateTime) {
+      return (
+        <span className="inline-flex items-baseline">
+          <span
+            style={{
+              fontSize: `${fontSize * 0.75}cqmin`,
+              marginRight: '1em',
+            }}
+          >
+            {formatDateTime(item.pubDate)}
+          </span>
+          <span>{content}</span>
+        </span>
+      );
+    }
+    return content;
+  };
+
+  // スロットAの状態
+  const slotAIsActive = activeSlot === 'A';
+  const slotAPosition = slotAIsActive
+    ? (isAnimating ? getExitTransform(direction) : 'translate(0, 0)')
+    : (isAnimating ? 'translate(0, 0)' : getEnterStartTransform(direction));
+
+  // スロットBの状態
+  const slotBIsActive = activeSlot === 'B';
+  const slotBPosition = slotBIsActive
+    ? (isAnimating ? getExitTransform(direction) : 'translate(0, 0)')
+    : (isAnimating ? 'translate(0, 0)' : getEnterStartTransform(direction));
 
   return (
     <div
-      className="w-full h-full flex items-center justify-center px-4"
+      className="w-full h-full flex items-center justify-center px-4 overflow-hidden relative"
       style={{
         transform: `translate(${translateX}px, ${translateY}px)`,
+        containerType: 'size',
       }}
     >
+      {/* スロットA */}
       <div
-        className={`${fontClass} text-center transition-opacity duration-300 ${
-          isTransitioning ? 'opacity-0' : 'opacity-100'
-        }`}
+        className={`${fontClass} text-center absolute`}
         style={{
           color: textColor,
           fontSize: `${fontSize}cqmin`,
+          transform: slotAPosition,
+          transition: isAnimating ? 'transform 400ms ease-out' : 'none',
         }}
       >
-        {text}
+        {renderItem(slotAIndex)}
+      </div>
+
+      {/* スロットB */}
+      <div
+        className={`${fontClass} text-center absolute`}
+        style={{
+          color: textColor,
+          fontSize: `${fontSize}cqmin`,
+          transform: slotBPosition,
+          transition: isAnimating ? 'transform 400ms ease-out' : 'none',
+        }}
+      >
+        {renderItem(slotBIndex)}
       </div>
     </div>
   );
@@ -331,7 +443,9 @@ export function NewsTickerWidget({ widget }: WidgetProps) {
   const tickerType = config.tickerType || 'marquee';
   const displayOrder = config.displayOrder || 'chronological';
   const displayContent = config.displayContent || 'title';
+  const showDateTime = config.showDateTime ?? false;
   const carouselInterval = config.carouselInterval ?? 5;
+  const carouselDirection = (config.carouselDirection || 'left') as CarouselDirection;
   const marqueeSpeed = config.marqueeSpeed || 'normal';
   const textFont = (config.textFont || 'gothic-light') as TextFont;
   const textScale = config.textScale ?? 1;
@@ -405,6 +519,7 @@ export function NewsTickerWidget({ widget }: WidgetProps) {
         <MarqueeDisplay
           items={sortedItems}
           displayContent={displayContent}
+          showDateTime={showDateTime}
           speed={marqueeSpeed}
           textColor={textColor}
           fontClass={fontClass}
@@ -416,7 +531,9 @@ export function NewsTickerWidget({ widget }: WidgetProps) {
         <CarouselDisplay
           items={sortedItems}
           displayContent={displayContent}
+          showDateTime={showDateTime}
           interval={carouselInterval}
+          direction={carouselDirection}
           textColor={textColor}
           fontClass={fontClass}
           fontSize={fontSize}

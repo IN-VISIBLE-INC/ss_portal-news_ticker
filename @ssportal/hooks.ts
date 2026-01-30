@@ -82,7 +82,16 @@ interface ConfigStore {
  */
 export function useConfigStore(): ConfigStore {
   return {
-    updateWidgetConfig: updateWidgetConfigInternal,
+    updateWidgetConfig: (widgetId: string, config: Record<string, unknown>) => {
+      // グローバルオーバーライドがあれば使用（プレビュー用）
+      // @ts-expect-error グローバルオーバーライド
+      if (typeof window !== 'undefined' && window.__ssportal_updateConfig) {
+        // @ts-expect-error グローバルオーバーライド
+        window.__ssportal_updateConfig(widgetId, config);
+      }
+      // 内部ストアも更新
+      updateWidgetConfigInternal(widgetId, config);
+    },
   };
 }
 

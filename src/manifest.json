@@ -3,7 +3,7 @@
   "id": "news_ticker",
   "name": "ニュースティッカー",
   "description": "RSSフィードからニュースを表示（カルーセル/マーキー対応）",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": {
     "name": "SSPortal Team"
   },
@@ -27,8 +27,10 @@
     "tickerType": "marquee",
     "displayOrder": "chronological",
     "displayContent": "title",
+    "showDateTime": false,
     "carouselInterval": 5,
-    "marqueeSpeed": "normal",
+    "carouselDirection": "left",
+    "marqueeSpeed": 30,
     "textFont": "gothic-light",
     "textScale": 1,
     "textTranslateX": 0,

@@ -18,10 +18,9 @@ import type {
   TickerType,
   DisplayOrder,
   DisplayContent,
-  MarqueeSpeed,
   TextFont,
 } from './types';
-import { TEXT_FONTS, MARQUEE_SPEEDS, DEFAULT_FEEDS } from './types';
+import { TEXT_FONTS, DEFAULT_FEEDS } from './types';
 
 // =============================================================================
 // 型定義
@@ -192,8 +191,9 @@ export function NewsTickerConfig({ widget }: WidgetConfigProps) {
   const tickerType = config.tickerType || 'marquee';
   const displayOrder = config.displayOrder || 'chronological';
   const displayContent = config.displayContent || 'title';
+  const showDateTime = config.showDateTime ?? false;
   const carouselInterval = config.carouselInterval ?? 5;
-  const marqueeSpeed = config.marqueeSpeed || 'normal';
+  const marqueeSpeed = config.marqueeSpeed ?? 30;
   const textFont = (config.textFont || 'gothic-light') as TextFont;
   const textScale = config.textScale ?? 1;
   const textTranslateX = config.textTranslateX ?? 0;
@@ -304,44 +304,66 @@ export function NewsTickerConfig({ widget }: WidgetConfigProps) {
           {/* マーキー速度（マーキー時のみ） */}
           {tickerType === 'marquee' && (
             <div>
-              <label className="text-sm text-gray-400">スクロール速度</label>
-              <div className="flex gap-2 mt-2">
-                {(Object.keys(MARQUEE_SPEEDS) as MarqueeSpeed[]).map((speed) => (
-                  <button
-                    key={speed}
-                    className={`flex-1 px-4 py-2 rounded-lg transition-colors ${
-                      marqueeSpeed === speed
-                        ? 'bg-gray-600 text-white'
-                        : 'bg-gray-700 text-gray-400 hover:bg-gray-650'
-                    }`}
-                    onClick={() => updateWidgetConfig(widget.id, { marqueeSpeed: speed })}
-                  >
-                    {MARQUEE_SPEEDS[speed].label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* カルーセル間隔（カルーセル時のみ） */}
-          {tickerType === 'carousel' && (
-            <div>
-              <label className="text-sm text-gray-400">切替間隔（秒）</label>
+              <label className="text-sm text-gray-400">スクロール速度（秒）</label>
               <div className="mt-2 flex items-center gap-3">
                 <input
                   type="range"
                   className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                  min={3}
-                  max={30}
-                  step={1}
-                  value={carouselInterval}
+                  min={10}
+                  max={120}
+                  step={5}
+                  value={marqueeSpeed}
                   onChange={(e) =>
-                    updateWidgetConfig(widget.id, { carouselInterval: parseInt(e.target.value) })
+                    updateWidgetConfig(widget.id, { marqueeSpeed: parseInt(e.target.value) })
                   }
                 />
-                <span className="w-12 text-sm text-white text-center">{carouselInterval}秒</span>
+                <span className="w-12 text-sm text-white text-center">{marqueeSpeed}秒</span>
               </div>
             </div>
+          )}
+
+          {/* カルーセル設定（カルーセル時のみ） */}
+          {tickerType === 'carousel' && (
+            <>
+              {/* 切替間隔 */}
+              <div>
+                <label className="text-sm text-gray-400">切替間隔（秒）</label>
+                <div className="mt-2 flex items-center gap-3">
+                  <input
+                    type="range"
+                    className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                    min={3}
+                    max={30}
+                    step={1}
+                    value={carouselInterval}
+                    onChange={(e) =>
+                      updateWidgetConfig(widget.id, { carouselInterval: parseInt(e.target.value) })
+                    }
+                  />
+                  <span className="w-12 text-sm text-white text-center">{carouselInterval}秒</span>
+                </div>
+              </div>
+
+              {/* 移動方向 */}
+              <div>
+                <label className="text-sm text-gray-400">移動方向</label>
+                <div className="grid grid-cols-4 gap-2 mt-2">
+                  {(['up', 'down', 'left', 'right'] as const).map((dir) => (
+                    <button
+                      key={dir}
+                      className={`px-3 py-2 rounded-lg transition-colors ${
+                        config.carouselDirection === dir
+                          ? 'bg-gray-600 text-white'
+                          : 'bg-gray-700 text-gray-400 hover:bg-gray-650'
+                      }`}
+                      onClick={() => updateWidgetConfig(widget.id, { carouselDirection: dir })}
+                    >
+                      {dir === 'up' ? '上' : dir === 'down' ? '下' : dir === 'left' ? '左' : '右'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
 
           {/* 表示順序 */}
@@ -393,15 +415,42 @@ export function NewsTickerConfig({ widget }: WidgetConfigProps) {
               </button>
               <button
                 className={`flex-1 px-4 py-2 rounded-lg transition-colors ${
-                  displayContent === 'description'
+                  displayContent === 'body'
                     ? 'bg-gray-600 text-white'
                     : 'bg-gray-700 text-gray-400 hover:bg-gray-650'
                 }`}
                 onClick={() =>
-                  updateWidgetConfig(widget.id, { displayContent: 'description' as DisplayContent })
+                  updateWidgetConfig(widget.id, { displayContent: 'body' as DisplayContent })
                 }
               >
-                説明文
+                本文
+              </button>
+            </div>
+          </div>
+
+          {/* 日時表示 */}
+          <div>
+            <label className="text-sm text-gray-400">日時を表示</label>
+            <div className="flex gap-2 mt-2">
+              <button
+                className={`flex-1 px-4 py-2 rounded-lg transition-colors ${
+                  showDateTime
+                    ? 'bg-gray-600 text-white'
+                    : 'bg-gray-700 text-gray-400 hover:bg-gray-650'
+                }`}
+                onClick={() => updateWidgetConfig(widget.id, { showDateTime: true })}
+              >
+                ON
+              </button>
+              <button
+                className={`flex-1 px-4 py-2 rounded-lg transition-colors ${
+                  !showDateTime
+                    ? 'bg-gray-600 text-white'
+                    : 'bg-gray-700 text-gray-400 hover:bg-gray-650'
+                }`}
+                onClick={() => updateWidgetConfig(widget.id, { showDateTime: false })}
+              >
+                OFF
               </button>
             </div>
           </div>

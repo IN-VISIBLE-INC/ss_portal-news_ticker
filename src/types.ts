@@ -5,14 +5,15 @@
 /** ティッカー表示タイプ */
 export type TickerType = 'carousel' | 'marquee';
 
+/** カルーセル方向 */
+export type CarouselDirection = 'up' | 'down' | 'left' | 'right';
+
 /** 表示順序 */
 export type DisplayOrder = 'chronological' | 'random';
 
 /** 表示内容 */
 export type DisplayContent = 'title' | 'description';
 
-/** マーキー速度 */
-export type MarqueeSpeed = 'slow' | 'normal' | 'fast';
 
 /** テキストフォント */
 export type TextFont = 'gothic-bold' | 'gothic-light' | 'mincho-bold' | 'mincho-light';
@@ -44,8 +45,10 @@ export interface NewsTickerConfig {
   tickerType: TickerType;
   displayOrder: DisplayOrder;
   displayContent: DisplayContent;
+  showDateTime: boolean;
   carouselInterval: number;
-  marqueeSpeed: MarqueeSpeed;
+  carouselDirection: CarouselDirection;
+  marqueeSpeed: number;
 
   // 文字設定
   textFont: TextFont;
@@ -69,12 +72,6 @@ export const TEXT_FONTS: Record<TextFont, { label: string; className: string }> 
   'mincho-light': { label: '細明朝', className: 'font-serif font-light' },
 };
 
-/** マーキー速度（秒/1ループ） */
-export const MARQUEE_SPEEDS: Record<MarqueeSpeed, { label: string; duration: number }> = {
-  slow: { label: '遅い', duration: 60 },
-  normal: { label: '普通', duration: 30 },
-  fast: { label: '速い', duration: 15 },
-};
 
 /** デフォルトRSSフィード */
 export const DEFAULT_FEEDS: RssFeed[] = [
