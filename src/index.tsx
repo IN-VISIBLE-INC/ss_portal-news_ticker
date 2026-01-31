@@ -395,25 +395,8 @@ interface CarouselDisplayProps {
   translateY: number;
 }
 
-// 方向に応じたトランスフォーム設定（コンテナ高さ/幅基準）
-const getExitTransform = (direction: CarouselDirection) => {
-  switch (direction) {
-    case 'up': return 'translateY(-100cqh)';
-    case 'down': return 'translateY(100cqh)';
-    case 'left': return 'translateX(-100cqw)';
-    case 'right': return 'translateX(100cqw)';
-  }
-};
-
-const getEnterStartTransform = (direction: CarouselDirection) => {
-  // 反対方向から入ってくる
-  switch (direction) {
-    case 'up': return 'translateY(100cqh)';
-    case 'down': return 'translateY(-100cqh)';
-    case 'left': return 'translateX(100cqw)';
-    case 'right': return 'translateX(-100cqw)';
-  }
-};
+// スライド＋フェード方式でトランスフォームを使用
+// Swift側から直接DOM操作でアニメーションを制御
 
 function CarouselDisplay({
   items,
@@ -471,7 +454,7 @@ function CarouselDisplay({
         {itemTexts[0] || ''}
       </div>
 
-      {/* スロットB - 次のアイテム（画面外で待機、初期は非表示） */}
+      {/* スロットB - 次のアイテム（スライド＋フェード用、初期は透明＋画面外） */}
       <div
         data-carousel-slot="B"
         className={`${fontClass} text-center absolute w-full`}

@@ -3,7 +3,7 @@
   "id": "news_ticker",
   "name": "ニュースティッカー",
   "description": "RSSフィードからニュースを表示（カルーセル/マーキー対応）",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "author": {
     "name": "SSPortal Team"
   },
@@ -13,7 +13,10 @@
     "height": 1
   },
   "availableSizes": [
-    { "width": 12, "height": 1 }
+    {
+      "width": 12,
+      "height": 1
+    }
   ],
   "defaultConfig": {
     "feeds": [
