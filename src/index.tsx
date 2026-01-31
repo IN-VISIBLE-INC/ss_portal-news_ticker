@@ -5,9 +5,12 @@
  *
  * RSSフィードからニュースを取得し、マーキー/カルーセル形式で表示。
  * WIDGET_RULES.md v2.0準拠。
+ *
+ * スクリーンセーバー環境ではSwift側からRSSデータが注入される。
+ * ブラウザ環境（プレビュー）ではAPIルートを使用。
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { WidgetProps } from '@ssportal/types';
 import type {
   NewsTickerConfig,
@@ -17,6 +20,46 @@ import type {
   CarouselDirection,
 } from './types';
 import { TEXT_FONTS, DEFAULT_FEEDS } from './types';
+
+// Swift側から注入されるRSSデータ用のグローバル変数
+// window.ssportalSetRSSDataが呼ばれると、このデータが更新される
+interface SwiftRSSItem {
+  id: string;
+  title: string;
+  description: string;
+  link: string;
+  pubDate: string;
+  feedId: string;
+}
+
+// グローバル変数としてRSSデータを保持（Swift側から注入される）
+let globalRSSItems: SwiftRSSItem[] = [];
+let globalRSSUpdateListeners: Array<() => void> = [];
+
+// グローバル関数を登録（Swift側から呼び出される）
+if (typeof window !== 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__newsTickerSetRSSData = (items: SwiftRSSItem[]) => {
+    console.log('NewsTicker: Received RSS data via global function', items.length, 'items');
+    globalRSSItems = items;
+    // 登録されているリスナーに通知
+    globalRSSUpdateListeners.forEach((listener) => listener());
+  };
+
+  // ssportalSetRSSDataも監視（configStore経由で呼ばれた場合のフォールバック）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const originalSetRSSData = (window as any).ssportalSetRSSData;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).ssportalSetRSSData = (items: SwiftRSSItem[]) => {
+    // 元の関数があれば呼び出し
+    if (originalSetRSSData) {
+      originalSetRSSData(items);
+    }
+    // news_ticker用にも更新
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__newsTickerSetRSSData(items);
+  };
+}
 
 // =============================================================================
 // RSS パース
@@ -94,17 +137,76 @@ function stripHtml(html: string): string {
 // RSS 取得フック
 // =============================================================================
 
+/**
+ * グローバルRSSデータを監視するフック
+ */
+function useGlobalRSSData(): SwiftRSSItem[] {
+  const [rssItems, setRssItems] = useState<SwiftRSSItem[]>(globalRSSItems);
+
+  useEffect(() => {
+    // グローバルRSSデータが更新されたら反映
+    const listener = () => {
+      setRssItems([...globalRSSItems]);
+    };
+    globalRSSUpdateListeners.push(listener);
+
+    // 初期値がある場合は反映
+    if (globalRSSItems.length > 0) {
+      setRssItems([...globalRSSItems]);
+    }
+
+    return () => {
+      const index = globalRSSUpdateListeners.indexOf(listener);
+      if (index > -1) {
+        globalRSSUpdateListeners.splice(index, 1);
+      }
+    };
+  }, []);
+
+  return rssItems;
+}
+
+/**
+ * RSSフィードを取得するフック
+ *
+ * データ取得の優先順位:
+ * 1. Swift側から注入されたデータ（スクリーンセーバー環境）
+ * 2. APIルート経由（ブラウザ環境/プレビュー）
+ */
 function useRssFeeds(feeds: RssFeed[]): { items: NewsItem[]; loading: boolean; error: string | null } {
   const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const hasTriedApi = useRef(false);
+
+  // Swift側から注入されたRSSデータを取得
+  const swiftRssItems = useGlobalRSSData();
 
   const enabledFeeds = useMemo(
     () => feeds.filter((feed) => feed.enabled),
     [feeds]
   );
 
+  // Swift側からのデータがある場合はそれを使用
+  useEffect(() => {
+    if (swiftRssItems && swiftRssItems.length > 0) {
+      console.log('NewsTicker: Using RSS data from Swift', swiftRssItems.length, 'items');
+      const converted: NewsItem[] = swiftRssItems.map((item) => ({
+        ...item,
+        pubDate: new Date(item.pubDate),
+      }));
+      setItems(converted);
+      setLoading(false);
+    }
+  }, [swiftRssItems]);
+
+  // APIフェッチ（ブラウザ環境/プレビュー用フォールバック）
   const fetchFeeds = useCallback(async () => {
+    // Swift側からデータがある場合はスキップ
+    if (swiftRssItems && swiftRssItems.length > 0) {
+      return;
+    }
+
     if (enabledFeeds.length === 0) {
       setItems([]);
       setLoading(false);
@@ -139,14 +241,31 @@ function useRssFeeds(feeds: RssFeed[]): { items: NewsItem[]; loading: boolean; e
     } finally {
       setLoading(false);
     }
-  }, [enabledFeeds]);
+  }, [enabledFeeds, swiftRssItems]);
 
   useEffect(() => {
-    fetchFeeds();
-    // 5分ごとに更新
-    const interval = setInterval(fetchFeeds, 5 * 60 * 1000);
+    // Swift側からデータがある場合はAPIフェッチ不要
+    if (swiftRssItems && swiftRssItems.length > 0) {
+      return;
+    }
+
+    // ブラウザ環境でのみAPIフェッチを試行
+    // スクリーンセーバー環境（静的エクスポート）ではAPIが動作しないため、
+    // 初回のみ試行し、失敗したらSwift側のデータを待つ
+    if (!hasTriedApi.current) {
+      hasTriedApi.current = true;
+      fetchFeeds();
+    }
+
+    // 5分ごとに更新（ブラウザ環境のみ）
+    const interval = setInterval(() => {
+      if (!swiftRssItems || swiftRssItems.length === 0) {
+        fetchFeeds();
+      }
+    }, 5 * 60 * 1000);
+
     return () => clearInterval(interval);
-  }, [fetchFeeds]);
+  }, [fetchFeeds, swiftRssItems]);
 
   return { items, loading, error };
 }
@@ -190,12 +309,13 @@ function MarqueeDisplay({
   translateX,
   translateY,
 }: MarqueeDisplayProps) {
-  const duration = speed;
+  // アニメーションはSwift側から直接DOM操作で制御（WKWebView対応）
+  // data-marquee属性とdata-marquee-speed属性でSwift側に情報を渡す
 
   if (items.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center">
-        <span style={{ color: textColor }} className={`${fontClass} opacity-50`}>
+        <span style={{ color: textColor, fontSize: `${fontSize}px` }} className={`${fontClass} opacity-50`}>
           ニュースを取得中...
         </span>
       </div>
@@ -211,7 +331,7 @@ function MarqueeDisplay({
           {showDateTime && (
             <span
               style={{
-                fontSize: `${fontSize * 0.75}cqmin`,
+                fontSize: `${fontSize * 0.75}px`,
                 marginRight: '1em',
               }}
             >
@@ -231,16 +351,15 @@ function MarqueeDisplay({
       }}
     >
       <div
-        className="animate-marquee whitespace-nowrap"
-        style={{
-          animationDuration: `${duration}s`,
-        }}
+        data-marquee="true"
+        data-marquee-speed={speed}
+        className="whitespace-nowrap"
       >
         <span
           className={`${fontClass} px-4`}
           style={{
             color: textColor,
-            fontSize: `${fontSize}cqmin`,
+            fontSize: `${fontSize}px`,
           }}
         >
           {renderItems()}
@@ -249,25 +368,12 @@ function MarqueeDisplay({
           className={`${fontClass} px-4`}
           style={{
             color: textColor,
-            fontSize: `${fontSize}cqmin`,
+            fontSize: `${fontSize}px`,
           }}
         >
           {renderItems()}
         </span>
       </div>
-      <style jsx>{`
-        @keyframes marquee {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-50%);
-          }
-        }
-        .animate-marquee {
-          animation: marquee linear infinite;
-        }
-      `}</style>
     </div>
   );
 }
@@ -321,111 +427,64 @@ function CarouselDisplay({
   translateX,
   translateY,
 }: CarouselDisplayProps) {
-  // スロットA/Bを交互に使用
-  const [slotAIndex, setSlotAIndex] = useState(0);
-  const [slotBIndex, setSlotBIndex] = useState(1);
-  const [activeSlot, setActiveSlot] = useState<'A' | 'B'>('A');
-  const [isAnimating, setIsAnimating] = useState(false);
-
-  useEffect(() => {
-    if (items.length <= 1) return;
-
-    const timer = setInterval(() => {
-      setIsAnimating(true);
-
-      setTimeout(() => {
-        // アニメーション完了後
-        if (activeSlot === 'A') {
-          // Bがアクティブになる。Aは次の次のアイテムを準備
-          setSlotAIndex((slotBIndex + 1) % items.length);
-          setActiveSlot('B');
-        } else {
-          // Aがアクティブになる。Bは次の次のアイテムを準備
-          setSlotBIndex((slotAIndex + 1) % items.length);
-          setActiveSlot('A');
-        }
-        setIsAnimating(false);
-      }, 400);
-    }, interval * 1000);
-
-    return () => clearInterval(timer);
-  }, [items.length, interval, activeSlot, slotAIndex, slotBIndex]);
+  // アニメーションはSwift側から直接DOM操作で制御（WKWebView対応）
 
   if (items.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center">
-        <span style={{ color: textColor }} className={`${fontClass} opacity-50`}>
+        <span style={{ color: textColor, fontSize: `${fontSize}px` }} className={`${fontClass} opacity-50`}>
           ニュースを取得中...
         </span>
       </div>
     );
   }
 
-  const renderItem = (idx: number) => {
-    const item = items[idx % items.length];
+  // 全アイテムのテキストを準備
+  const itemTexts = items.map((item) => {
     const content = displayContent === 'title' ? item.title : item.description;
     if (showDateTime) {
-      return (
-        <span className="inline-flex items-baseline">
-          <span
-            style={{
-              fontSize: `${fontSize * 0.75}cqmin`,
-              marginRight: '1em',
-            }}
-          >
-            {formatDateTime(item.pubDate)}
-          </span>
-          <span>{content}</span>
-        </span>
-      );
+      return `${formatDateTime(item.pubDate)} ${content}`;
     }
     return content;
-  };
-
-  // スロットAの状態
-  const slotAIsActive = activeSlot === 'A';
-  const slotAPosition = slotAIsActive
-    ? (isAnimating ? getExitTransform(direction) : 'translate(0, 0)')
-    : (isAnimating ? 'translate(0, 0)' : getEnterStartTransform(direction));
-
-  // スロットBの状態
-  const slotBIsActive = activeSlot === 'B';
-  const slotBPosition = slotBIsActive
-    ? (isAnimating ? getExitTransform(direction) : 'translate(0, 0)')
-    : (isAnimating ? 'translate(0, 0)' : getEnterStartTransform(direction));
+  });
 
   return (
     <div
+      data-carousel="true"
+      data-carousel-interval={interval}
+      data-carousel-direction={direction}
+      data-carousel-items={JSON.stringify(itemTexts)}
       className="w-full h-full flex items-center justify-center px-4 overflow-hidden relative"
       style={{
         transform: `translate(${translateX}px, ${translateY}px)`,
-        containerType: 'size',
       }}
     >
-      {/* スロットA */}
+      {/* スロットA - 現在表示中 */}
       <div
-        className={`${fontClass} text-center absolute`}
+        data-carousel-slot="A"
+        className={`${fontClass} text-center absolute w-full`}
         style={{
           color: textColor,
-          fontSize: `${fontSize}cqmin`,
-          transform: slotAPosition,
-          transition: isAnimating ? 'transform 400ms ease-out' : 'none',
+          fontSize: `${fontSize}px`,
         }}
       >
-        {renderItem(slotAIndex)}
+        {itemTexts[0] || ''}
       </div>
 
-      {/* スロットB */}
+      {/* スロットB - 次のアイテム（画面外で待機、初期は非表示） */}
       <div
-        className={`${fontClass} text-center absolute`}
+        data-carousel-slot="B"
+        className={`${fontClass} text-center absolute w-full`}
         style={{
           color: textColor,
-          fontSize: `${fontSize}cqmin`,
-          transform: slotBPosition,
-          transition: isAnimating ? 'transform 400ms ease-out' : 'none',
+          fontSize: `${fontSize}px`,
+          opacity: 0,
+          transform: direction === 'up' ? 'translateY(100%)' :
+                     direction === 'down' ? 'translateY(-100%)' :
+                     direction === 'left' ? 'translateX(100%)' : 'translateX(-100%)',
         }}
       >
-        {renderItem(slotBIndex)}
+        {itemTexts[1] || itemTexts[0] || ''}
       </div>
     </div>
   );
@@ -446,7 +505,7 @@ export function NewsTickerWidget({ widget }: WidgetProps) {
   const showDateTime = config.showDateTime ?? false;
   const carouselInterval = config.carouselInterval ?? 5;
   const carouselDirection = (config.carouselDirection || 'left') as CarouselDirection;
-  const marqueeSpeed = config.marqueeSpeed || 'normal';
+  const marqueeSpeed = config.marqueeSpeed ?? 30;
   const textFont = (config.textFont || 'gothic-light') as TextFont;
   const textScale = config.textScale ?? 1;
   const textTranslateX = config.textTranslateX ?? 0;
@@ -477,7 +536,7 @@ export function NewsTickerWidget({ widget }: WidgetProps) {
 
   // フォントスタイル
   const fontClass = TEXT_FONTS[textFont].className;
-  const baseFontSize = 40; // 横長（12x1）なのでcqminベース
+  const baseFontSize = 24; // ピクセル単位のベースサイズ
   const fontSize = baseFontSize * textScale;
 
   // ローディング表示
