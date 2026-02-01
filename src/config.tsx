@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { useConfigStore } from '@ssportal/hooks';
+import { useConfigStore, useWidgetFromStore } from '@ssportal/hooks';
 import { WidgetConfigProps } from '@ssportal/types';
 import { WidgetBaseConfig } from '@ssportal/WidgetBaseConfig';
 import { ColorPicker, ScaleSlider, TranslateSliders } from '@ssportal/components';
@@ -180,11 +180,19 @@ function FontPreview({ font, isSelected, onClick }: FontPreviewProps) {
 // メイン設定コンポーネント
 // =============================================================================
 
-export function NewsTickerConfig({ widget }: WidgetConfigProps) {
+export function NewsTickerConfig({ widget: widgetProp }: WidgetConfigProps) {
   const [activeTab, setActiveTab] = useState<ConfigTab>('feed');
   const { updateWidgetConfig } = useConfigStore();
 
+  // storeから直接widgetを取得することで、updateWidgetConfig後に再レンダリングされる
+  const widgetFromStore = useWidgetFromStore(widgetProp.id);
+  const widget = widgetFromStore ?? widgetProp;
   const config = widget.config as Partial<NewsTickerConfig>;
+
+  // デバッグ
+  console.log('[NewsTickerConfig] widgetProp.id:', widgetProp.id);
+  console.log('[NewsTickerConfig] widgetFromStore:', widgetFromStore ? 'found' : 'null');
+  console.log('[NewsTickerConfig] config.textColor:', config.textColor);
 
   // 設定値（デフォルト値付き）
   const feeds = config.feeds || DEFAULT_FEEDS;

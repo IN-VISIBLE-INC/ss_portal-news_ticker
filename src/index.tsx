@@ -133,6 +133,18 @@ function stripHtml(html: string): string {
   return doc.body.textContent || '';
 }
 
+/**
+ * HEXカラーをRGBAに変換（背景色のopacity適用用）
+ */
+function hexToRgba(hex: string, alpha: number): string {
+  const match = hex.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  if (!match) return hex;
+  const r = parseInt(match[1], 16);
+  const g = parseInt(match[2], 16);
+  const b = parseInt(match[3], 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 // =============================================================================
 // RSS 取得フック
 // =============================================================================
@@ -315,7 +327,7 @@ function MarqueeDisplay({
   if (items.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center">
-        <span style={{ color: textColor, fontSize: `${fontSize}px` }} className={`${fontClass} opacity-50`}>
+        <span style={{ color: textColor, fontSize: `${fontSize}px` }} className={fontClass}>
           ニュースを取得中...
         </span>
       </div>
@@ -415,7 +427,7 @@ function CarouselDisplay({
   if (items.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center">
-        <span style={{ color: textColor, fontSize: `${fontSize}px` }} className={`${fontClass} opacity-50`}>
+        <span style={{ color: textColor, fontSize: `${fontSize}px` }} className={fontClass}>
           ニュースを取得中...
         </span>
       </div>
@@ -528,8 +540,7 @@ export function NewsTickerWidget({ widget }: WidgetProps) {
       <div
         className="w-full h-full rounded-xl overflow-hidden flex items-center justify-center"
         style={{
-          backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor,
-          opacity: bgColor !== 'transparent' ? bgOpacity / 100 : 1,
+          backgroundColor: bgColor === 'transparent' ? 'transparent' : hexToRgba(bgColor, bgOpacity / 100),
           border:
             borderSize > 0 && borderColor !== 'transparent'
               ? `${borderSize}px solid ${borderColor}`
@@ -537,7 +548,7 @@ export function NewsTickerWidget({ widget }: WidgetProps) {
           containerType: 'size',
         }}
       >
-        <span className={`${fontClass} opacity-50`} style={{ color: textColor }}>
+        <span className={fontClass} style={{ color: textColor }}>
           読み込み中...
         </span>
       </div>
@@ -548,8 +559,7 @@ export function NewsTickerWidget({ widget }: WidgetProps) {
     <div
       className="w-full h-full rounded-xl overflow-hidden"
       style={{
-        backgroundColor: bgColor === 'transparent' ? 'transparent' : bgColor,
-        opacity: bgColor !== 'transparent' ? bgOpacity / 100 : 1,
+        backgroundColor: bgColor === 'transparent' ? 'transparent' : hexToRgba(bgColor, bgOpacity / 100),
         border:
           borderSize > 0 && borderColor !== 'transparent'
             ? `${borderSize}px solid ${borderColor}`
